@@ -9,25 +9,13 @@ class MaterialSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ProductMaterialSerializer(serializers.ModelSerializer):
-    material = MaterialSerializer()
-
-    class Meta:
-        model = ProductMaterial
-        fields = ["product", "material", "quantity"]
-
-
-class WarehouseSerializer(serializers.ModelSerializer):
-    material = MaterialSerializer()
-
-    class Meta:
-        model = Warehouse
-        fields = ["id", "material", "remainder", "price"]
-
-
 class ProductSerializer(serializers.ModelSerializer):
-    materials = ProductMaterialSerializer(source="productmaterial_set", many=True)
-
     class Meta:
         model = Product
-        fields = ["id", "name", "code", "materials"]
+        fields = "__all__"
+
+
+class ProductMaterialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductMaterial
+        fields = "__all__"

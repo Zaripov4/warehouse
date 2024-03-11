@@ -7,67 +7,62 @@ from .models import Product, ProductMaterial, Warehouse
 
 class InventoryCheckAPIView(APIView):
     def post(self, request, *args, **kwargs):
+        warehouse_inventory = [
+            {"id": 1, "material_name": "Mato", "quantity": 12, "price": 1500},
+            {"id": 2, "material_name": "Mato", "quantity": 200, "price": 1600},
+            {"id": 3, "material_name": "Ip", "quantity": 40, "price": 500},
+            {"id": 4, "material_name": "Ip", "quantity": 300, "price": 550},
+            {"id": 5, "material_name": "Tugma", "quantity": 500, "price": 300},
+            {"id": 6, "material_name": "Zamok", "quantity": 1000, "price": 2000},
+        ]
         requested_products = request.data
-        response_data = self.check_inventory(requested_products)
+        response_data = self.check_inventory(requested_products, warehouse_inventory)
+        if "error" in response_data:
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
         return Response(response_data)
 
-    def check_inventory(self, requested_products):
+    def check_inventory(self, requested_products, warehouse_inventory):
         result = []
-        error = None
 
         for product_name, quantity in requested_products.items():
-            try:
-                product = Product.objects.get(name=product_name)
-            except Product.DoesNotExist:
-                error = {"error": f"Product '{product_name}' not found"}
-                break
+            # Retrieve warehouse inventory for the product
+            product_inventory = [
+                item
+                for item in warehouse_inventory
+                if item["material_name"] == product_name
+            ]
 
-            product_materials = ProductMaterial.objects.filter(product=product)
-            product_material_data = []
+            # Check if enough quantity is available in the warehouse
+            total_quantity_available = sum(
+                item["quantity"] for item in product_inventory
+            )
+            if int(total_quantity_available) < int(quantity):
+                return {"error": f"Insufficient inventory for product {product_name}"}
 
-            for product_material in product_materials:
-                warehouse = Warehouse.objects.filter(
-                    material=product_material.material
-                ).first()
+            product_inventory.sort(key=lambda x: x["id"])  # Sorting by "id"
+            used_inventory = []
 
-                if warehouse:
-                    if warehouse.remainder >= quantity * product_material.quantity:
-                        product_material_data.append(
-                            {
-                                "warehouse_id": warehouse.id,
-                                "material_name": product_material.material.name,
-                                "qty": quantity * product_material.quantity,
-                                "price": warehouse.price,
-                            }
-                        )
-                    else:
-                        product_material_data.append(
-                            {
-                                "warehouse_id": None,
-                                "material_name": product_material.material.name,
-                                "qty": warehouse.remainder,
-                                "price": warehouse.price,
-                            }
-                        )
-                else:
-                    product_material_data.append(
-                        {
-                            "warehouse_id": None,
-                            "material_name": product_material.material.name,
-                            "qty": 0,
-                            "price": None,
-                        }
-                    )
+            for item in product_inventory:
+                qty_to_use = min(quantity, item["quantity"])
+                used_inventory.append(
+                    {
+                        "warehouse_id": item["id"],
+                        "material_name": product_name,
+                        "qty": qty_to_use,
+                        "price": item["price"],
+                    }
+                )
+                quantity -= qty_to_use
+
+                if quantity == 0:
+                    break
 
             result.append(
                 {
-                    "product_name": product.name,
+                    "product_name": product_name,
                     "product_qty": quantity,
-                    "product_materials": product_material_data,
+                    "product_materials": used_inventory,
                 }
             )
 
-        if error:
-            return error
-        else:
-            return {"result": result}
+        return {"result": result}
