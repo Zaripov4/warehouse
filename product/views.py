@@ -30,54 +30,74 @@ class InventoryCheckAPIView(APIView):
     def check_inventory(self, requested_products, warehouse_inventory):
         result = []
 
+        product_materials_required = {
+            "ko'ylak": {"mato": 0.8, "tugma": 5, "ip": 10},
+            "shim": {"mato": 1.4, "ip": 15, "zamok": 1},
+        }
+
         for product_name, quantity in requested_products.items():
-            # Validate if product exists in the inventory
-            if not quantity.isdigit():
-                return {
-                    "error": f"Invalid quantity '{quantity}' for product '{product_name}'"
-                }
+            product_materials_data = []
 
-            # Convert quantity to integer
-            quantity = int(quantity)
-
+            # Fetch inventory data for the requested product from warehouse_inventory
             product_inventory = [
                 item
                 for item in warehouse_inventory
                 if item["material_name"] == product_name
             ]
+
             if not product_inventory:
                 return {"error": f"Product '{product_name}' not found"}
 
-            # Check if enough quantity is available in the warehouse
-            total_quantity_available = sum(
-                item["quantity"] for item in product_inventory
-            )
-            if total_quantity_available < quantity:
-                return {"error": f"Insufficient inventory for product '{product_name}'"}
+            # Calculate the total quantities of materials required for the specified quantity of the product
+            total_materials_required = {}
+            for material, qty_per_product in product_materials_required[
+                product_name
+            ].items():
+                total_materials_required[material] = qty_per_product * quantity
 
-            product_inventory.sort(key=lambda x: x["id"])  # Sorting by 'id'
-            used_inventory = []
+            # Check if enough quantity is available in the warehouse for each material
+            for material, required_qty in total_materials_required.items():
+                # Fetch inventory data for the material from warehouse_inventory
+                material_inventory = [
+                    item
+                    for item in warehouse_inventory
+                    if item["material_name"] == material
+                ]
 
-            for item in product_inventory:
-                qty_to_use = min(quantity, item["quantity"])
-                used_inventory.append(
+                if not material_inventory:
+                    return {
+                        "error": f"Material '{material}' not found for product '{product_name}'"
+                    }
+
+                total_qty_available = sum(
+                    item["quantity"] for item in material_inventory
+                )
+
+                if total_qty_available < required_qty:
+                    return {
+                        "error": f"Insufficient inventory for material '{material}' to produce '{product_name}'"
+                    }
+
+                # Find the price of the material
+                material_price = material_inventory[0][
+                    "price"
+                ]  # Assuming price is the same for all instances of the material
+
+                product_materials_data.append(
                     {
-                        "warehouse_id": item["id"],
-                        "material_name": product_name,
-                        "qty": qty_to_use,
-                        "price": item["price"],
+                        "material_name": material,
+                        "qty_required": required_qty,
+                        "qty_available": total_qty_available,
+                        "price": material_price,
                     }
                 )
-                quantity -= qty_to_use
 
-                if quantity == 0:
-                    break
-
+            # Add product data to the response
             result.append(
                 {
                     "product_name": product_name,
                     "product_qty": quantity,
-                    "product_materials": used_inventory,
+                    "product_materials": product_materials_data,
                 }
             )
 
